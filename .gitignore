@@ -1,0 +1,14 @@
+# IDEs
+.idea/
+.vscode/
+
+# Build artifacts
+/target
+/build
+/dist
+
+# Logs
+*.log
+
+# Environment
+.env
