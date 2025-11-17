@@ -101,3 +101,37 @@ async fn test_submit_claim_missing_payload() {
 
     response.assert_status(StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+#[serial]
+async fn test_submit_claim_invalid_timestamp() {
+    std::env::set_var("DATABASE_URL", "postgres://user:password@localhost:5432/ml_chain");
+    let pool = db::create_pool().await.unwrap();
+    setup_db(&pool).await;
+    let app = create_app(pool.clone());
+    let server = TestServer::new(app).unwrap();
+
+    let miner_id: Uuid = sqlx::query_scalar("SELECT miner_id FROM miner_keys LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let old_timestamp = chrono::Utc::now() - chrono::Duration::minutes(10);
+
+    let submission = Submission {
+        miner_id,
+        task_id: "test_task".to_string(),
+        claimed_score: BigDecimal::from_str("0.99").unwrap(),
+        artifact_hash: "test_hash".to_string(),
+        timestamp: old_timestamp,
+        nonce: "test_nonce_invalid_timestamp".to_string(),
+    };
+
+    let form = MultipartForm::new()
+        .add_part("payload", Part::text(serde_json::to_string(&submission).unwrap()))
+        .add_part("artifact", Part::bytes(b"test_artifact".to_vec()));
+
+    let response = server.post("/api/v1/submit").multipart(form).await;
+
+    response.assert_status(StatusCode::BAD_REQUEST);
+}

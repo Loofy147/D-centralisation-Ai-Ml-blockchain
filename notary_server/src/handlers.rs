@@ -64,6 +64,16 @@ pub async fn submit_claim(State(pool): State<DbPool>, mut multipart: Multipart) 
 
     let payload = payload.ok_or_else(|| AppError::MissingField("payload".to_string()))?;
     let _artifact = artifact.ok_or_else(|| AppError::MissingField("artifact".to_string()))?;
+
+    // Timestamp validation
+    let now = chrono::Utc::now();
+    let five_minutes = chrono::Duration::minutes(5);
+    if now.signed_duration_since(payload.timestamp).abs() > five_minutes {
+        return Err(AppError::InvalidTimestamp(
+            "Timestamp must be within 5 minutes of the current time".to_string(),
+        ));
+    }
+
     let submission_id = Uuid::new_v4();
 
     sqlx::query(
