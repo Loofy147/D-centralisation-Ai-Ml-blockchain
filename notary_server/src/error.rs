@@ -12,6 +12,8 @@ pub enum AppError {
     Multipart(MultipartError),
     SerdeJson(serde_json::Error),
     MissingField(String),
+    InvalidTimestamp(String),
+    HashMismatch,
 }
 
 impl IntoResponse for AppError {
@@ -22,6 +24,8 @@ impl IntoResponse for AppError {
             AppError::Multipart(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             AppError::SerdeJson(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             AppError::MissingField(field) => (StatusCode::BAD_REQUEST, format!("Missing field: {}", field)),
+            AppError::InvalidTimestamp(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::HashMismatch => (StatusCode::BAD_REQUEST, "hash_mismatch".to_string()),
         };
 
         let body = Json(json!({ "error": error_message }));
