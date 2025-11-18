@@ -6,6 +6,7 @@ use sqlx::types::BigDecimal;
 use uuid::Uuid;
 
 use crate::{db::DbPool, error::AppError};
+use sha2::{Digest, Sha256};
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
 pub struct Task {
@@ -63,7 +64,16 @@ pub async fn submit_claim(State(pool): State<DbPool>, mut multipart: Multipart) 
     }
 
     let payload = payload.ok_or_else(|| AppError::MissingField("payload".to_string()))?;
-    let _artifact = artifact.ok_or_else(|| AppError::MissingField("artifact".to_string()))?;
+    let artifact = artifact.ok_or_else(|| AppError::MissingField("artifact".to_string()))?;
+
+    // Hash verification
+    let mut hasher = Sha256::new();
+    hasher.update(&artifact);
+    let hash = hasher.finalize();
+    let hash_hex = hex::encode(hash);
+    if payload.artifact_hash != format!("sha256:{}", hash_hex) {
+        return Err(AppError::HashMismatch);
+    }
 
     // Timestamp validation
     let now = chrono::Utc::now();

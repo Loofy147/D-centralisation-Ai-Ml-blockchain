@@ -1,6 +1,7 @@
 use notary_server::{create_app, db, handlers::{Submission, Task}};
 use axum::http::StatusCode;
 use axum_test::TestServer;
+use sha2::Digest;
 use axum_test::multipart::{MultipartForm, Part};
 use serde_json;
 use serial_test::serial;
@@ -62,11 +63,15 @@ async fn test_submit_claim() {
         .await
         .unwrap();
 
+    let artifact = b"test_artifact".to_vec();
+    let hash = sha2::Sha256::digest(&artifact);
+    let hash_hex = hex::encode(hash);
+
     let submission = Submission {
         miner_id,
         task_id: "test_task".to_string(),
         claimed_score: BigDecimal::from_str("0.99").unwrap(),
-        artifact_hash: "test_hash".to_string(),
+        artifact_hash: format!("sha256:{}", hash_hex),
         timestamp: chrono::Utc::now(),
         nonce: "test_nonce".to_string(),
     };
@@ -96,6 +101,38 @@ async fn test_submit_claim_missing_payload() {
     let server = TestServer::new(app).unwrap();
 
     let form = MultipartForm::new().add_part("artifact", Part::bytes(b"test_artifact".to_vec()));
+
+    let response = server.post("/api/v1/submit").multipart(form).await;
+
+    response.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_submit_claim_hash_mismatch() {
+    std::env::set_var("DATABASE_URL", "postgres://user:password@localhost:5432/ml_chain");
+    let pool = db::create_pool().await.unwrap();
+    setup_db(&pool).await;
+    let app = create_app(pool.clone());
+    let server = TestServer::new(app).unwrap();
+
+    let miner_id: Uuid = sqlx::query_scalar("SELECT miner_id FROM miner_keys LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let submission = Submission {
+        miner_id,
+        task_id: "test_task".to_string(),
+        claimed_score: BigDecimal::from_str("0.99").unwrap(),
+        artifact_hash: "sha256:wrong_hash".to_string(),
+        timestamp: chrono::Utc::now(),
+        nonce: "test_nonce_hash_mismatch".to_string(),
+    };
+
+    let form = MultipartForm::new()
+        .add_part("payload", Part::text(serde_json::to_string(&submission).unwrap()))
+        .add_part("artifact", Part::bytes(b"test_artifact".to_vec()));
 
     let response = server.post("/api/v1/submit").multipart(form).await;
 
